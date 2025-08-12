@@ -23,7 +23,7 @@ ENV PORT=3000
 
 # ติดตั้งเฉพาะ prod deps ใหม่แบบไม่ใช้ lockfile (ภาพจะเล็กกว่า copy ทั้ง node_modules)
 COPY package.json ./
-RUN corepack enable && yarn set version classic && yarn install --production=true --no-lockfile
+RUN yarn install --no-lockfile
 
 # คัดลอกผล build
 COPY --from=builder /app/.next ./.next
