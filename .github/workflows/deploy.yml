@@ -1,0 +1,64 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: selfhosted-frontend
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # ไม่ส่ง build-arg ใด ๆ เพราะเราไม่ใช้ env ตอน build
+      - name: Build image
+        run: docker build -t ratchaphongc1/blog-front-image:latest .
+
+      - name: Push image
+        run: docker push ratchaphongc1/blog-front-image:latest
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - name: Free space before pull
+        run: |
+          docker ps -aq --filter status=exited | xargs -r docker rm -f || true
+          docker image prune -a -f || true
+          docker builder prune -af || true
+          df -h || true
+          docker system df || true
+
+      - name: Pull image
+        run: docker pull ratchaphongc1/blog-front-image:latest
+
+      - name: Stop old container (if any)
+        run: docker rm -f blog-frontend-container || true
+
+      - name: Create .env.frontend
+        env:
+          PORT: ${{ secrets.FRONTEND_PORT }} # ตั้งใน repo secrets เป็นตัวเลข เช่น 3000
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }} # ตั้งเป็น /api หรือ URL ก็ได้
+        run: |
+          : "${PORT:=3000}"               
+          : "${NEXT_PUBLIC_API_URL:=/api}"
+          {
+            echo "PORT=${PORT}";
+            echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}";
+          } > .env.frontend
+
+      - name: Run new container
+        run: |
+          docker run -d \
+            -p 3001:3000 \
+            --env-file .env.frontend \
+            --name blog-frontend-container \
+            --restart unless-stopped \
+            ratchaphongc1/blog-front-image:latest
